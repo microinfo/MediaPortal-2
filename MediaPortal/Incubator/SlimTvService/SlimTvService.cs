@@ -97,7 +97,7 @@ namespace MediaPortal.Plugins.SlimTv.Service
       if (Directory.Exists(tuningDetails))
         return;
 
-      ServiceRegistration.Get<ILogger>().Info("SlimTvService: Tuningdetails folder does not exist yet, extracting default items.");
+      ServiceRegistration.Get<ILogger>().Info("SlimTvService: TuningParameters folder '{0}' does not exist yet, extracting default items.", tuningDetails);
       try
       {
         ZipFile dataArchive = new ZipFile(Utilities.FileSystem.FileUtils.BuildAssemblyRelativePath("ProgramData\\ProgramData.zip"));
