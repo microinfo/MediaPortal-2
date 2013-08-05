@@ -1,4 +1,4 @@
-﻿#region Copyright (C) 2007-2013 Team MediaPortal
+#region Copyright (C) 2007-2013 Team MediaPortal
 
 /*
     Copyright (C) 2007-2013 Team MediaPortal
@@ -22,31 +22,12 @@
 
 #endregion
 
-namespace MediaPortal.Extensions.UserServices.FanArtService.Interfaces
+namespace MediaPortal.UiComponents.Media.Models.Navigation
 {
-  public class FanArtConstants
+  /// <summary>
+  /// Holds a GUI item which represents an audio album filter choice.
+  /// </summary>
+  public class AlbumFilterItem : FilterItem
   {
-    public enum FanArtMediaType
-    {
-      Undefined,
-      Music,
-      Movie,
-      MovieCollection,
-      Series,
-      SeriesSeason,
-      Episode,
-      Actor,
-      Artist,
-      Channel,
-      Album,
-    }
-
-    public enum FanArtType
-    {
-      Undefined,
-      Poster,
-      Banner,
-      FanArt,
-    }
   }
 }
