@@ -332,8 +332,8 @@ namespace MediaPortal.UI.SkinEngine.Controls.Brushes
           TryDispose(ref _texture);
           _texture = new Texture(device, desc.Width, desc.Height, 1, Usage.RenderTarget, Format.A8R8G8B8, Pool.Default);
         }
-        using (Surface target = _texture.GetSurfaceLevel(0))
-          device.StretchRectangle(playerSurface, target, TextureFilter.None);
+        Surface target = _texture.GetSurfaceLevel(0);
+        device.StretchRectangle(playerSurface, target, TextureFilter.None);
       }
       
       // Handling of multipass (3D) rendering, transformed rect contains the clipped area of the source image (i.e. left side in Side-By-Side mode).
@@ -351,11 +351,6 @@ namespace MediaPortal.UI.SkinEngine.Controls.Brushes
 
       player = playerContextManager[Stream] as ISlimDXVideoPlayer;
       return player != null;
-    }
-
-    protected override bool BeginRenderOpacityBrushOverride(Texture tex, RenderContext renderContext)
-    {
-      throw new NotImplementedException("VideoBrush doesn't support being rendered as an opacity brush");
     }
 
     public override void EndRender()
