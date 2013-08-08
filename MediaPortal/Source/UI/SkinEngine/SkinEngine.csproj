@@ -32,6 +32,8 @@
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
     <TargetFrameworkProfile />
+    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\..\</SolutionDir>
+    <RestorePackages>true</RestorePackages>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <DebugSymbols>true</DebugSymbols>
@@ -55,6 +57,9 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="FreeImageNET">
+      <HintPath>..\..\..\Packages\FreeImageNET.3.15.1\lib\net20\FreeImageNET.dll</HintPath>
+    </Reference>
     <Reference Include="SlimDX, Version=2.0.9.42, Culture=neutral, PublicKeyToken=b1b0c32fd1ffe4f9, processorArchitecture=x86">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>References\SlimDX.dll</HintPath>
@@ -461,7 +466,11 @@
     <Compile Include="Utils\CalcHelper.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="References\freetype6.dll" />
+    <Content Include="References\SlimDX.dll" />
+    <Content Include="References\zlib1.dll" />
     <Content Include="Skin\default\screens\skinengine_config_skinresource_dialog.xaml" />
+    <None Include="packages.config" />
     <None Include="Skin\default\shaders\blur.fx" />
     <None Include="Skin\default\shaders\dialogbg.fx" />
     <None Include="Skin\default\shaders\effects\denoise.fx" />
@@ -557,4 +566,6 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="build.targets" />
+  <Import Project="$(SolutionDir)\.nuget\NuGet.targets" Condition="Exists('$(SolutionDir)\.nuget\NuGet.targets')" />
+  <Import Project="..\..\..\Packages\FreeImage.3.15.4\build\FreeImage.targets" Condition="Exists('..\..\..\Packages\FreeImage.3.15.4\build\FreeImage.targets')" />
 </Project>
