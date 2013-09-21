@@ -42,7 +42,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
     protected IItemProvider _itemProvider = null;
 
     // Assigned in Arrange
-    protected IList<FrameworkElement> _arrangedItems = new List<FrameworkElement>();
+    protected FrameworkElement[] _arrangedItems = null;
 
     // Assigned in CalculateInnerDesiredSize
     protected float _averageItemSize = 0;
@@ -58,7 +58,6 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
       base.DeepCopy(source, copyManager);
       VirtualizingWrapPanel p = (VirtualizingWrapPanel)source;
       _itemProvider = copyManager.GetCopy(p._itemProvider);
-      _arrangedItems.Clear();
       _averageItemSize = 0;
     }
 
@@ -195,7 +194,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
 
         layoutChild.Arrange(new RectangleF(location, size));
 
-        _arrangedItems.Add(layoutChild);
+        _arrangedItems[i] = layoutChild;
       }
     }
 
@@ -242,21 +241,36 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
               }
               _pendingScrollIndex = null;
             }
-
-          // todo : honor _actualFirstVisibleLineIndex since we might have scrolled! -> for that we need to know how many items fit on one line!
+          
+          // if we are starting at element 0 - average items per line is unknown, but also not needed
+          // in order to calculate the starting index of elements from first visible line index we look at the last _arrangedItems
           int _averageItemsPerLine = 0;
-          if (_arrangedLines.Count > 0 && _arrangedItems.Count > 0)
-            _averageItemsPerLine = (int)Math.Round((float)_arrangedItems.Count / _arrangedLines.Count);
-          _arrangedItems.Clear();
+          if (_arrangedLines.Count > 0)
+            _averageItemsPerLine = (int)Math.Round((float)(_arrangedLines.Last().EndIndex - _arrangedLines.First().StartIndex) / _arrangedLines.Count);
+          _arrangedItems = new FrameworkElement[numItems];
           _arrangedLines.Clear();
-          int index = _actualFirstVisibleLineIndex * _averageItemsPerLine;
+
+          // todo : add as many null lines into _arrangedLines as there probably are
+
+          // NUM_ADD_MORE_FOCUS_LINES before and below should be added as well
+          int visibleStartIndex = _actualFirstVisibleLineIndex * _averageItemsPerLine;
+          int index = Math.Max(0, _actualFirstVisibleLineIndex - NUM_ADD_MORE_FOCUS_LINES) * _averageItemsPerLine;
           float accumulatedExtendsInNonOrientationDirection = 0.0f;
           while (index < numItems && accumulatedExtendsInNonOrientationDirection < actualExtendsInNonOrientationDirection)
           {
             LineMeasurement line = CalculateLine(index, _innerRect.Size, false);
             _arrangedLines.Add(line);
             index = line.EndIndex + 1;
-            accumulatedExtendsInNonOrientationDirection += line.TotalExtendsInNonOrientationDirection;
+            if (index >= visibleStartIndex)
+              accumulatedExtendsInNonOrientationDirection += line.TotalExtendsInNonOrientationDirection;
+          }
+          int additionalLines = 0;
+          while (index < numItems && additionalLines < NUM_ADD_MORE_FOCUS_LINES)
+          {
+            LineMeasurement line = CalculateLine(index, _innerRect.Size, false);
+            _arrangedLines.Add(line);
+            index = line.EndIndex + 1;
+            additionalLines++;
           }
 
           // 1) Calculate scroll indices
@@ -320,14 +334,10 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
             _actualFirstVisibleLineIndex = 0;
             _actualLastVisibleLineIndex = _arrangedLines.Count - 1;
           }
-          /*
+          
           // 2) Calculate start position
-          for (int i = 0; i < _actualFirstVisibleLineIndex; i++)
-          {
-            LineMeasurement line = _arrangedLines[i];
-            startPosition -= line.TotalExtendsInNonOrientationDirection;
-          }
-          */
+          startPosition -= _actualFirstVisibleLineIndex * _averageItemSize;
+
           // 3) Arrange children
           if (Orientation == Orientation.Vertical)
             _totalHeight = actualExtendsInOrientationDirection;
@@ -336,7 +346,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
           PointF position = Orientation == Orientation.Vertical ?
               new PointF(actualPosition.X + startPosition, actualPosition.Y) :
               new PointF(actualPosition.X, actualPosition.Y + startPosition);
-          foreach (LineMeasurement line in _arrangedLines)
+          foreach (LineMeasurement line in _arrangedLines.Skip(_actualFirstVisibleLineIndex).Take(_actualLastVisibleLineIndex - _actualFirstVisibleLineIndex + 1))
           {
             LayoutLine(position, line);
 
@@ -353,19 +363,16 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
             }
           }
 
-          _averageItemsPerLine = (int)Math.Round((float)_arrangedItems.Count / _arrangedLines.Count);
+		      _averageItemsPerLine = (int)Math.Round((float)(_arrangedLines.Last().EndIndex - _arrangedLines.First().StartIndex) / _arrangedLines.Count);
 
-          int numInvisible = numItems - _arrangedItems.Count; // Items which have not been arranged above, i.e. item extends have not been added to _totalHeight / _totalWidth
-          float invisibleRequiredSize = numInvisible / _averageItemsPerLine * _averageItemSize;
-          if (_doScroll)
-            invisibleRequiredSize += actualExtendsInOrientationDirection % _averageItemSize; // Size gap from the last item to the end of the actual extends
+          int numNonArranged = numItems - (_arrangedLines[_actualLastVisibleLineIndex].EndIndex - _arrangedLines[_actualFirstVisibleLineIndex].StartIndex + 1); // Items which have not been arranged above, i.e. item extends have not been added to _totalHeight / _totalWidth
+          float invisibleRequiredSize = (int)Math.Ceiling((float)numNonArranged / _averageItemsPerLine) * _averageItemSize;
           if (Orientation == Orientation.Horizontal)
             _totalHeight += invisibleRequiredSize;
           else
             _totalWidth += invisibleRequiredSize;
 
-          _itemProvider.Keep(_arrangedLines.First().StartIndex,
-              _arrangedLines.Last().EndIndex);
+          _itemProvider.Keep(_arrangedLines.First().StartIndex, _arrangedLines.Last().EndIndex);
 
         }
         else
@@ -401,70 +408,20 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
         if (numItems == 0)
           return SizeF.Empty;
 
-        SizeF resultSize;
-        // Get all viewable children (= visible children inside our range)
-        IList<FrameworkElement> exemplaryChildren = GetMeasuredViewableChildren(totalSize, out resultSize);
-        if (exemplaryChildren.Count == 0)
-        { // Might be the case if no item matches into totalSize. Fallback: Use the first visible item.
-          for (int i = 0; i < numItems; i++)
-          {
-            FrameworkElement item = GetItem(i, itemProvider, true);
-            if (item == null || !item.IsVisible)
-              continue;
-            exemplaryChildren.Add(item);
-            break;
-          }
-        }
-        if (exemplaryChildren.Count == 0)
-          return SizeF.Empty;
+        // under the precondition that all items use the same template and are equally sized 
+        // calulate just one line to find number of items and required size of a line
+        LineMeasurement exemplaryLine = CalculateLine(_actualFirstVisibleLineIndex > 0 ? _arrangedLines[_actualFirstVisibleLineIndex].StartIndex : 0, totalSize, false);
+        
+        _averageItemSize = exemplaryLine.TotalExtendsInNonOrientationDirection;
 
-        LineMeasurement line = CalculateLine(exemplaryChildren, 0, totalSize, false);
-        resultSize.Height = line.TotalExtendsInOrientationDirection;
-        resultSize.Width = line.TotalExtendsInNonOrientationDirection;
+        var _averageItemsPerLine = exemplaryLine.EndIndex - exemplaryLine.StartIndex + 1;
 
-        _averageItemSize = GetExtendsInOrientationDirection(Orientation, resultSize) / exemplaryChildren.Count;
-        return Orientation == Orientation.Vertical ? new SizeF(resultSize.Width, resultSize.Height * numItems / exemplaryChildren.Count) :
-            new SizeF(resultSize.Width * numItems / exemplaryChildren.Count, resultSize.Height);
+        // return extimated desired size
+        var estimatedExtendsInNonOrientationDirection = (float)Math.Ceiling((float)numItems / _averageItemsPerLine) * _averageItemSize;
 
-        /*
-
-        int numVisibleChildren = visibleChildren.Count;
-        if (numVisibleChildren == 0)
-          return SizeF.Empty;
-        float totalDesiredWidth = 0;
-        float totalDesiredHeight = 0;
-        int index = 0;
-        while (index < numVisibleChildren)
-        {
-          LineMeasurement line = CalculateLine(visibleChildren, index, totalSize, false);
-          if (line.EndIndex < line.StartIndex)
-            // Element doesn't fit
-            break;
-          switch (Orientation)
-          {
-            case Orientation.Horizontal:
-              if (line.TotalExtendsInOrientationDirection > totalDesiredWidth)
-                totalDesiredWidth = line.TotalExtendsInOrientationDirection;
-              totalDesiredHeight += line.TotalExtendsInNonOrientationDirection;
-              break;
-            case Orientation.Vertical:
-              if (line.TotalExtendsInOrientationDirection > totalDesiredHeight)
-                totalDesiredHeight = line.TotalExtendsInOrientationDirection;
-              totalDesiredWidth += line.TotalExtendsInNonOrientationDirection;
-              break;
-          }
-          index = line.EndIndex + 1;
-        }
-        return new SizeF(totalDesiredWidth, totalDesiredHeight);
-        */
+        return Orientation == Orientation.Horizontal ? new SizeF(exemplaryLine.TotalExtendsInOrientationDirection, estimatedExtendsInNonOrientationDirection) :
+            new SizeF(estimatedExtendsInNonOrientationDirection, exemplaryLine.TotalExtendsInOrientationDirection);
       }
-    }
-
-    // It's actually "GetVisibleChildren", but that member already exists in Panel
-    protected IList<FrameworkElement> GetMeasuredViewableChildren(SizeF totalSize, out SizeF resultSize)
-    {
-      resultSize = SizeF.Empty;
-      return new List<FrameworkElement>();
     }
 
     protected FrameworkElement GetItem(int childIndex, IItemProvider itemProvider, bool forceMeasure)
@@ -510,9 +467,9 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
         base.AddChildren(childrenOut);
         return;
       }
-
-      lock (Children.SyncRoot)
-        CollectionUtils.AddAll(childrenOut, _arrangedItems);
+      if (_arrangedItems != null)
+        lock (Children.SyncRoot)
+          CollectionUtils.AddAll(childrenOut, _arrangedItems.Where(i => i != null));
     }
 
     protected override IEnumerable<FrameworkElement> GetRenderedChildren()
@@ -522,11 +479,10 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
         return base.GetRenderedChildren();
 
       if (_actualFirstVisibleLineIndex < 0 || _actualLastVisibleLineIndex < _actualFirstVisibleLineIndex)
-        return new List<FrameworkElement>();      
-      int start = _arrangedLines[0].StartIndex;
+        return new List<FrameworkElement>();
+      int start = _arrangedLines[_actualFirstVisibleLineIndex].StartIndex;
       int end = _arrangedLines[_actualLastVisibleLineIndex - _actualFirstVisibleLineIndex].EndIndex;
-      int amount = end - start;
-      return _arrangedItems.Take(amount + 1);//.Skip(start).Take(end - start + 1);
+      return _arrangedItems.Skip(start).Take(end - start + 1);
     }
 
     protected override void MakeChildVisible(UIElement element, ref RectangleF elementBounds)
@@ -575,6 +531,31 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
         }
         lineIndex++;
       }
+    }
+
+    public override void AlignedPanelAddPotentialFocusNeighbors(RectangleF? startingRect, ICollection<FrameworkElement> outElements,
+        bool linesBeforeAndAfter)
+    {
+      IItemProvider itemProvider = ItemProvider;
+      if (itemProvider == null)
+      {
+        base.AlignedPanelAddPotentialFocusNeighbors(startingRect, outElements, linesBeforeAndAfter);
+        return;
+      }
+      if (!IsVisible)
+        return;
+      if (Focusable)
+        outElements.Add(this);
+
+      IList<FrameworkElement> arrangedItemsCopy;
+      lock (Children.SyncRoot)
+      {
+        arrangedItemsCopy = new List<FrameworkElement>(_arrangedItems.Skip(_arrangedLines[0].StartIndex).Take(_arrangedLines[_arrangedLines.Count - 1].EndIndex + 1));
+      }
+      int numLinesBeforeAndAfter = linesBeforeAndAfter ? NUM_ADD_MORE_FOCUS_LINES : 0;
+      AddFocusedElementRange(arrangedItemsCopy, startingRect, _actualFirstVisibleLineIndex, _actualLastVisibleLineIndex,
+          numLinesBeforeAndAfter, numLinesBeforeAndAfter, outElements);
+
     }
 	}
 }
