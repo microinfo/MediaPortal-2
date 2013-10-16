@@ -372,7 +372,9 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
           else
             _totalWidth += invisibleRequiredSize;
 
-          _itemProvider.Keep(_arrangedLines.First().StartIndex, _arrangedLines.Last().EndIndex);
+          // keep one more item, because we did use it in CalcLine (and need always one more to find the last item not fitting on the line)
+          // -> if we dont, it will always be newlyCreated and we keep calling Arrange since the new item recursively sets all parents invalid
+          _itemProvider.Keep(_arrangedLines.First().StartIndex, _arrangedLines.Last().EndIndex + 1); 
 
         }
         else
