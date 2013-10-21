@@ -258,6 +258,8 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
             float spaceLeft = actualExtendsInNonOrientationDirection;
             if (invertLayouting)
             {
+              if (_actualLastVisibleLineIndex == int.MaxValue) // when scroll to last item (END) was requested
+                _actualLastVisibleLineIndex = (int)Math.Ceiling((float)numItems / numItemsPerLine) - 1;
               _actualFirstVisibleLineIndex = _actualLastVisibleLineIndex + 1;
               int currentLineIndex = _actualLastVisibleLineIndex;
               lastActualArrangedLineIndex = currentLineIndex;
@@ -367,7 +369,6 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
           // keep one more item, because we did use it in CalcLine (and need always one more to find the last item not fitting on the line)
           // -> if we dont, it will always be newlyCreated and we keep calling Arrange since the new item recursively sets all parents invalid
           _itemProvider.Keep(_arrangedLines[firstActualArrangedLineIndex].StartIndex, _arrangedLines[lastActualArrangedLineIndex].EndIndex + 1);
-
         }
         else
         {
@@ -531,6 +532,8 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
       }
     }
 
+    #region Focus handling overrides
+
     public override void AlignedPanelAddPotentialFocusNeighbors(RectangleF? startingRect, ICollection<FrameworkElement> outElements,
         bool linesBeforeAndAfter)
     {
@@ -553,7 +556,70 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
       int numLinesBeforeAndAfter = linesBeforeAndAfter ? NUM_ADD_MORE_FOCUS_LINES : 0;
       AddFocusedElementRange(arrangedItemsCopy, startingRect, _actualFirstVisibleLineIndex, _actualLastVisibleLineIndex,
           numLinesBeforeAndAfter, numLinesBeforeAndAfter, outElements);
-
     }
-	}
+
+    public override bool FocusHome()
+    {
+      IItemProvider itemProvider = ItemProvider;
+      if (itemProvider == null)
+        return base.FocusHome();
+
+      lock (Children.SyncRoot)
+      {
+        if (itemProvider.NumItems == 0)
+          return false;
+        FrameworkElement item = GetItem(0, itemProvider, false);
+        if (item != null)
+          item.SetFocusPrio = SetFocusPriority.Default;
+      }
+      SetScrollIndex(0, true);
+      return true;
+    }
+
+    public override bool FocusEnd()
+    {
+      IItemProvider itemProvider = ItemProvider;
+      if (itemProvider == null)
+        return base.FocusHome();
+
+      int numItems;
+      lock (Children.SyncRoot)
+      {
+        numItems = itemProvider.NumItems;
+        if (numItems == 0)
+          return false;
+        FrameworkElement item = GetItem(numItems - 1, itemProvider, false);
+        if (item != null)
+          item.SetFocusPrio = SetFocusPriority.Default;
+      }
+      SetScrollIndex(int.MaxValue, false);
+      return true;
+    }
+
+    #endregion
+
+    #region IScrollInfo implementation overrides
+
+    public override float ViewPortStartX
+    {
+      get { return Orientation == Orientation.Horizontal ? 0 : _actualFirstVisibleLineIndex * _averageItemSize; }
+    }
+
+    public override float ViewPortStartY
+    {
+      get { return Orientation == Orientation.Vertical ? 0 : _actualFirstVisibleLineIndex * _averageItemSize; }
+    }
+
+    public override bool IsViewPortAtBottom
+    {
+      get { return Orientation == Orientation.Vertical || _actualLastVisibleLineIndex == _arrangedLines.Count - 1; }
+    }
+
+    public override bool IsViewPortAtRight
+    {
+      get { return Orientation == Orientation.Horizontal || _actualLastVisibleLineIndex == _arrangedLines.Count - 1; }
+    }
+
+    #endregion
+  }
 }
