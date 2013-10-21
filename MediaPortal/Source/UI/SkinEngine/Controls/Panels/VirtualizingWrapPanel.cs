@@ -243,35 +243,14 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
             }
           
           // if we are starting at element 0 - average items per line is unknown, but also not needed
-          // in order to calculate the starting index of elements from first visible line index we look at the last _arrangedItems
-          int _averageItemsPerLine = 0;
-          if (_arrangedLines.Count > 0)
-            _averageItemsPerLine = (int)Math.Round((float)(_arrangedLines.Last().EndIndex - _arrangedLines.First().StartIndex) / _arrangedLines.Count);
+          // in order to calculate the starting index of elements for a given line index we assume that every line (besides the last) has the same number of items
+          // so we use the number of items in the first visible line
+          int numItemsPerLine = _arrangedLines.Count == 0 ? 0 : _arrangedLines[_actualFirstVisibleLineIndex].EndIndex - _arrangedLines[_actualFirstVisibleLineIndex].StartIndex + 1;
           _arrangedItems = new FrameworkElement[numItems];
           _arrangedLines.Clear();
 
-          // todo : add as many null lines into _arrangedLines as there probably are
-
-          // NUM_ADD_MORE_FOCUS_LINES before and below should be added as well
-          int visibleStartIndex = _actualFirstVisibleLineIndex * _averageItemsPerLine;
-          int index = Math.Max(0, _actualFirstVisibleLineIndex - NUM_ADD_MORE_FOCUS_LINES) * _averageItemsPerLine;
-          float accumulatedExtendsInNonOrientationDirection = 0.0f;
-          while (index < numItems && accumulatedExtendsInNonOrientationDirection < actualExtendsInNonOrientationDirection)
-          {
-            LineMeasurement line = CalculateLine(index, _innerRect.Size, false);
-            _arrangedLines.Add(line);
-            index = line.EndIndex + 1;
-            if (index >= visibleStartIndex)
-              accumulatedExtendsInNonOrientationDirection += line.TotalExtendsInNonOrientationDirection;
-          }
-          int additionalLines = 0;
-          while (index < numItems && additionalLines < NUM_ADD_MORE_FOCUS_LINES)
-          {
-            LineMeasurement line = CalculateLine(index, _innerRect.Size, false);
-            _arrangedLines.Add(line);
-            index = line.EndIndex + 1;
-            additionalLines++;
-          }
+          int firstActualArrangedLineIndex = 0;
+          int lastActualArrangedLineIndex = 0;
 
           // 1) Calculate scroll indices
           if (_doScroll)
@@ -279,54 +258,67 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
             float spaceLeft = actualExtendsInNonOrientationDirection;
             if (invertLayouting)
             {
-              CalcHelper.Bound(ref _actualLastVisibleLineIndex, 0, numItems - 1);
               _actualFirstVisibleLineIndex = _actualLastVisibleLineIndex + 1;
-              while (_actualFirstVisibleLineIndex > 0)
+              int currentLineIndex = _actualLastVisibleLineIndex;
+              lastActualArrangedLineIndex = currentLineIndex;
+              while (_arrangedLines.Count <= currentLineIndex) _arrangedLines.Add(new LineMeasurement()); // add "unarranged lines" up to the last visible
+              int itemIndex = currentLineIndex * numItemsPerLine;
+              int additionalLinesBefore = 0;
+              while (currentLineIndex >= 0 && additionalLinesBefore < NUM_ADD_MORE_FOCUS_LINES)
               {
-                LineMeasurement line = _arrangedLines[_actualFirstVisibleLineIndex - 1];
+                LineMeasurement line = CalculateLine(itemIndex, _innerRect.Size, false);
+                _arrangedLines[currentLineIndex] = line;
+
+                firstActualArrangedLineIndex = currentLineIndex;
+
+                currentLineIndex--;
+                itemIndex = line.StartIndex - numItemsPerLine;
+                
                 spaceLeft -= line.TotalExtendsInNonOrientationDirection;
                 if (spaceLeft + DELTA_DOUBLE < 0)
-                  break;
-                _actualFirstVisibleLineIndex--;
+                  additionalLinesBefore++;
+                else
+                  _actualFirstVisibleLineIndex--;
               }
-
-              if (spaceLeft > 0)
-              { // Correct the last scroll index to fill the available space
-                int maxArrangedLine = _arrangedLines.Count - 1;
-                while (_actualLastVisibleLineIndex < maxArrangedLine)
-                {
-                  LineMeasurement line = _arrangedLines[_actualLastVisibleLineIndex + 1];
-                  spaceLeft -= line.TotalExtendsInNonOrientationDirection;
-                  if (spaceLeft + DELTA_DOUBLE < 0)
-                    break; // Found item which is not visible any more
-                  _actualLastVisibleLineIndex++;
-                }
+              // now add NUM_ADD_MORE_FOCUS_LINES after last visible
+              itemIndex = _arrangedLines[lastActualArrangedLineIndex].EndIndex + 1;
+              int additionalLinesAfterwards = 0;
+              while (itemIndex < numItems && additionalLinesAfterwards < NUM_ADD_MORE_FOCUS_LINES)
+              {
+                LineMeasurement line = CalculateLine(itemIndex, _innerRect.Size, false);
+                _arrangedLines.Add(line);
+                lastActualArrangedLineIndex = _arrangedLines.Count - 1;
+                itemIndex = line.EndIndex + 1;
+                additionalLinesAfterwards++;
               }
             }
             else
             {
-              //CalcHelper.Bound(ref _actualFirstVisibleLineIndex, 0, _arrangedLines.Count - 1);
               _actualLastVisibleLineIndex = _actualFirstVisibleLineIndex - 1;
-              while (_actualLastVisibleLineIndex - _actualFirstVisibleLineIndex + 1 < _arrangedLines.Count)
+              firstActualArrangedLineIndex = Math.Max(_actualFirstVisibleLineIndex - NUM_ADD_MORE_FOCUS_LINES, 0);
+              int currentLineIndex = firstActualArrangedLineIndex;
+              while (_arrangedLines.Count < currentLineIndex) _arrangedLines.Add(new LineMeasurement()); // add "unarranges lines" up until where we start
+              int itemIndex = currentLineIndex * numItemsPerLine;
+              int additionalLinesAfterwards = 0;
+              while (itemIndex < numItems && additionalLinesAfterwards < NUM_ADD_MORE_FOCUS_LINES)
               {
-                LineMeasurement line = _arrangedLines[_actualLastVisibleLineIndex - _actualFirstVisibleLineIndex + 1];
-                spaceLeft -= line.TotalExtendsInNonOrientationDirection;
-                if (spaceLeft + DELTA_DOUBLE < 0)
-                  break;
-                _actualLastVisibleLineIndex++;
-              }
+                LineMeasurement line = CalculateLine(itemIndex, _innerRect.Size, false);                
+                _arrangedLines.Add(line);
+                
+                lastActualArrangedLineIndex = currentLineIndex;
 
-              /*if (spaceLeft > 0)
-              { // Correct the first scroll index to fill the available space
-                while (_actualFirstVisibleLineIndex > 0)
+                currentLineIndex++;
+                itemIndex = line.EndIndex + 1;
+
+                if (currentLineIndex > _actualFirstVisibleLineIndex)
                 {
-                  LineMeasurement line = _arrangedLines[_actualFirstVisibleLineIndex - 1];
                   spaceLeft -= line.TotalExtendsInNonOrientationDirection;
                   if (spaceLeft + DELTA_DOUBLE < 0)
-                    break; // Found item which is not visible any more
-                  _actualFirstVisibleLineIndex--;
+                    additionalLinesAfterwards++;
+                  else
+                    _actualLastVisibleLineIndex++;
                 }
-              }*/
+              }
             }
           }
           else
@@ -336,7 +328,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
           }
           
           // 2) Calculate start position
-          startPosition -= _actualFirstVisibleLineIndex * _averageItemSize;
+          startPosition -= (_actualFirstVisibleLineIndex - firstActualArrangedLineIndex) * _averageItemSize;
 
           // 3) Arrange children
           if (Orientation == Orientation.Vertical)
@@ -346,7 +338,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
           PointF position = Orientation == Orientation.Vertical ?
               new PointF(actualPosition.X + startPosition, actualPosition.Y) :
               new PointF(actualPosition.X, actualPosition.Y + startPosition);
-          foreach (LineMeasurement line in _arrangedLines.Skip(_actualFirstVisibleLineIndex).Take(_actualLastVisibleLineIndex - _actualFirstVisibleLineIndex + 1))
+          foreach (LineMeasurement line in _arrangedLines.Skip(firstActualArrangedLineIndex).Take(lastActualArrangedLineIndex - firstActualArrangedLineIndex + 1))
           {
             LayoutLine(position, line);
 
@@ -363,10 +355,10 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
             }
           }
 
-		      _averageItemsPerLine = (int)Math.Round((float)(_arrangedLines.Last().EndIndex - _arrangedLines.First().StartIndex) / _arrangedLines.Count);
+		      numItemsPerLine = (int)Math.Round((float)(_arrangedLines.Last().EndIndex - _arrangedLines.First().StartIndex) / _arrangedLines.Count);
 
-          int numNonArranged = numItems - (_arrangedLines[_actualLastVisibleLineIndex].EndIndex - _arrangedLines[_actualFirstVisibleLineIndex].StartIndex + 1); // Items which have not been arranged above, i.e. item extends have not been added to _totalHeight / _totalWidth
-          float invisibleRequiredSize = (int)Math.Ceiling((float)numNonArranged / _averageItemsPerLine) * _averageItemSize;
+          int numNonArranged = numItems - (_arrangedLines[lastActualArrangedLineIndex].EndIndex - _arrangedLines[firstActualArrangedLineIndex].StartIndex + 1); // Items which have not been arranged above, i.e. item extends have not been added to _totalHeight / _totalWidth
+          float invisibleRequiredSize = (int)Math.Ceiling((float)numNonArranged / numItemsPerLine) * _averageItemSize;
           if (Orientation == Orientation.Horizontal)
             _totalHeight += invisibleRequiredSize;
           else
@@ -374,7 +366,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
 
           // keep one more item, because we did use it in CalcLine (and need always one more to find the last item not fitting on the line)
           // -> if we dont, it will always be newlyCreated and we keep calling Arrange since the new item recursively sets all parents invalid
-          _itemProvider.Keep(_arrangedLines.First().StartIndex, _arrangedLines.Last().EndIndex + 1); 
+          _itemProvider.Keep(_arrangedLines[firstActualArrangedLineIndex].StartIndex, _arrangedLines[lastActualArrangedLineIndex].EndIndex + 1);
 
         }
         else
@@ -483,7 +475,7 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
       if (_actualFirstVisibleLineIndex < 0 || _actualLastVisibleLineIndex < _actualFirstVisibleLineIndex)
         return new List<FrameworkElement>();
       int start = _arrangedLines[_actualFirstVisibleLineIndex].StartIndex;
-      int end = _arrangedLines[_actualLastVisibleLineIndex - _actualFirstVisibleLineIndex].EndIndex;
+      int end = _arrangedLines[_actualLastVisibleLineIndex].EndIndex;
       return _arrangedItems.Skip(start).Take(end - start + 1);
     }
 
@@ -506,32 +498,36 @@ namespace MediaPortal.UI.SkinEngine.Controls.Panels
           arrangedItemsCopy = new List<FrameworkElement>(_arrangedItems);
         }
         IList<LineMeasurement> lines = new List<LineMeasurement>(_arrangedLines);
-        foreach (FrameworkElement currentChild in arrangedItemsCopy)
+        foreach (LineMeasurement line in lines)
         {
-          if (InVisualPath(currentChild, element))
+          for (int childIndex = line.StartIndex; childIndex <= line.EndIndex; childIndex++)
           {
-            int oldFirstVisibleLine = _actualFirstVisibleLineIndex;
-            int oldLastVisibleLine = _actualLastVisibleLineIndex;
-            bool first;
-            if (lineIndex < oldFirstVisibleLine)
-              first = true;
-            else if (lineIndex <= oldLastVisibleLine)
-              // Already visible
+            FrameworkElement currentChild = arrangedItemsCopy[childIndex];
+            if (InVisualPath(currentChild, element))
+            {
+              int oldFirstVisibleLine = _actualFirstVisibleLineIndex;
+              int oldLastVisibleLine = _actualLastVisibleLineIndex;
+              bool first;
+              if (lineIndex < oldFirstVisibleLine)
+                first = true;
+              else if (lineIndex <= oldLastVisibleLine)
+                // Already visible
+                break;
+              else
+                first = false;
+              SetScrollIndex(lineIndex, first);
+              // Adjust the scrolled element's bounds; Calculate the difference between positions of childen at old/new child indices
+              float extendsInOrientationDirection = SumActualLineExtendsInNonOrientationDirection(lines,
+                  first ? oldFirstVisibleLine : oldLastVisibleLine, lineIndex);
+              if (Orientation == Orientation.Horizontal)
+                elementBounds.X -= extendsInOrientationDirection;
+              else
+                elementBounds.Y -= extendsInOrientationDirection;
               break;
-            else
-              first = false;
-            SetScrollIndex(lineIndex, first);
-            // Adjust the scrolled element's bounds; Calculate the difference between positions of childen at old/new child indices
-            float extendsInOrientationDirection = SumActualLineExtendsInNonOrientationDirection(lines,
-                first ? oldFirstVisibleLine : oldLastVisibleLine, lineIndex);
-            if (Orientation == Orientation.Horizontal)
-              elementBounds.X -= extendsInOrientationDirection;
-            else
-              elementBounds.Y -= extendsInOrientationDirection;
-            break;
+            }
           }
+          lineIndex++;
         }
-        lineIndex++;
       }
     }
 
